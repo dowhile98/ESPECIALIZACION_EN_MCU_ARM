@@ -16,3 +16,8 @@ con Aplicación en Internet of Things, Procesamiento Digital de Señales y Contr
 
 
 <img src="https://user-images.githubusercontent.com/47931397/148791224-8a6d58e5-80a7-423a-82d6-09bdddcdf6f8.png">
+
+Especialista en MCU ARM y sistemas embebidos
+- Quino B. Jeffry
+- Telf     :955207709
+- Correo   : jeffryquino@gmail.com / dowhile98@gmail.com
