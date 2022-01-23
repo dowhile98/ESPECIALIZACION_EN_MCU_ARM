@@ -3,8 +3,8 @@ Luego de realizar la depuración, me di cuenta que la división de SystemCoreClo
 así que se asigna el valor de la división de manera directa.
 ### Por ejemplo:
 Si SYSCLK = 84MHz
-SysTick->LOAD = 84000 - 1;    // para generar retardos de un milisegundo
-SysTick->LOAD = 84-1;         // para generar retardos de un microsegundo
+- SysTick->LOAD = 84000 - 1;    // para generar retardos de un milisegundo
+- SysTick->LOAD = 84-1;         // para generar retardos de un microsegundo
 
 ## RESULTADO 
 
