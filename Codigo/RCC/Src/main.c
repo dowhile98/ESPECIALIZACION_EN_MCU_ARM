@@ -45,11 +45,12 @@ int main(void)
 	systemFreq = SystemCoreClock;
 	/*HSE init*/
 	HSE_Config();
+
+	systemFreq = SystemCoreClock;
+	/*PLL init*/
+	PLL_Config();
+	systemFreq = SystemCoreClock;
 	printf("CONFIGURACION HSE LISTO->%d\n",systemFreq);
-//	systemFreq = SystemCoreClock;
-//	/*PLL init*/
-//	PLL_Config();
-//	systemFreq = SystemCoreClock;
 //	RCC_CR |= 1U<<18 | 1U<<16;
 //	while(!(RCC_CR & 1U<<17));		//espera que el HSERDY
     /* Loop forever */
@@ -111,6 +112,7 @@ void PLL_Config(void){
 	/*select system clock source*/
 	RCC->CFGR |= RCC_CFGR_SW_PLL;
 	while(!(RCC->CFGR & RCC_CFGR_SWS_PLL));		//wait PLL ready as system clock
+	SystemCoreClockUpdate();
 	return;
 }
 

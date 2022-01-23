@@ -20,7 +20,10 @@
 #include "stm32f4xx.h"
 
 uint8_t stateButton;
-
+/**
+ * @brief funcion que va generar retardos en milisegundos
+ */
+void delay_ms(uint32_t delay);
 
 void delay(uint32_t delay){
 	int i;
@@ -55,11 +58,41 @@ int main(void)
     /* Loop forever */
 	for(;;){
 
-		stateButton = (GPIOC->IDR>>13 & 0x1);
-		if(stateButton)
-			GPIOA->BSRR |= 1U<<5;
-		else
-			GPIOA->BSRR |= (1U<<(16+5));
+//		stateButton = (GPIOC->IDR>>13 & 0x1);
+//		if(stateButton)
+//			GPIOA->BSRR |= 1U<<5;
+//		else
+//			GPIOA->BSRR |= (1U<<(16+5));
+		GPIOA->ODR ^= 1U<<5;
+		delay_ms(100);
 
 	}
+}
+
+/**
+ * @brief funcion que va generar retardos en milisegundos
+ */
+void delay_ms(uint32_t delay){
+	uint32_t i;
+	/*deshabilitar la systick*/
+	SysTick->CTRL &=~ SysTick_CTRL_ENABLE_Msk;
+	/*cargar el valor de reload al registro LOAD*/
+	SysTick->LOAD = SystemCoreClock /1000 - 1;   //2^24 - SystemCoreClock * delay/1000
+
+	/*poner el regitro VAL*/
+	SysTick->VAL = 0;
+
+	/*elegir la fuente de reloj*/
+	SysTick->CTRL |= 1u<<2;				//SYSCLK
+	/*Habilitar el conteo*/
+	SysTick->CTRL |= SysTick_CTRL_ENABLE_Msk;
+
+	for(i = 0;i<delay;i++){
+		while(!(SysTick->CTRL & 1U<<16));			//retardo de un milisegundo
+	}
+
+	/*deshabilitar la systick*/
+	SysTick->CTRL &=~ SysTick_CTRL_ENABLE_Msk;
+
+	return;
 }
