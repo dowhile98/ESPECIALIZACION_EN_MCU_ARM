@@ -20,7 +20,12 @@
 #include "stm32f4xx.h"
 #include "RCC.h"
 
-#define USE_DELAY_US  1
+/**
+ * USE_DELAY_US
+ * 0 : solo retardos en milisegundos
+ * 1 : retardos en microsegundos/milisegundos
+ */
+#define USE_DELAY_US  0
 
 
 /**
@@ -40,8 +45,9 @@ void delay_us(uint32_t delay);
 #endif
 /**
  * delay init
+ * @param [ticks] : obtenido de la formula ticks = SystemCoreClock * T(s)
  */
-void delay_Init(void);
+void delay_Init(uint32_t ticks);
 /**
  * @brief funcion que va generar retardos en milisegundos
  */
@@ -50,12 +56,16 @@ void delay_ms(uint32_t delay);
 int main(void)
 {
 	/*pll init*/
-	flash_cofig();
-	PLL_Config();
+//	flash_cofig();
+//	PLL_Config();
+
 	/*delay init*/
 #if USE_DELAY_US == 1
-	delay_Init();
+	delay_Init(SystemCoreClock/1000000);
+#else
+	delay_Init(SystemCoreClock/1000);
 #endif
+
 	/*enable clk*7	 */
 	RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN;
 	//PA5 -> SALIDA DIGITAL (push-pull, verry high speed)
@@ -64,7 +74,7 @@ int main(void)
     /* Loop forever */
 	for(;;){
 		GPIOA->ODR ^= 1U<<5;
-		delay_us(50);
+		delay_ms(50);
 	}
 }
 
@@ -82,23 +92,22 @@ void delay_us(uint32_t delay){
 	return;
 
 }
+
+
+#endif
 /**
  * delay init
  */
-void delay_Init(void){
+void delay_Init(uint32_t ticks){
 	/*deshabilitar la systick*/
 	SysTick->CTRL &=~ SysTick_CTRL_ENABLE_Msk;
 	/*cargar el valor de reload al registro LOAD*/
-	SysTick->LOAD = 84 - 1;   //2^24 - SystemCoreClock * delay/1000
+	SysTick->LOAD = ticks - 1;   //2^24 - SystemCoreClock * delay/1000
 	/*selecciona la fuente de reloj*/
 	SysTick->CTRL |= 1u<<2;
 	/*elegir la fuente de reloj Habilitar el conteo*/
 	SysTick->CTRL |=  1;				//SYSCLK
 }
-
-#endif
-
-
 /**
  * @brief funcion que va generar retardos en milisegundos
  */
@@ -110,15 +119,15 @@ void delay_ms(uint32_t delay){
 	}
 #else
 	/*deshabilitar la systick*/
-	SysTick->CTRL &=~ SysTick_CTRL_ENABLE_Msk;
-	/*cargar el valor de reload al registro LOAD*/
-	SysTick->LOAD = 84000 - 1;   //2^24 - SystemCoreClock * delay/1000
+//	SysTick->CTRL &=~ SysTick_CTRL_ENABLE_Msk;
+//	/*cargar el valor de reload al registro LOAD*/
+//	SysTick->LOAD = 84000 - 1;   //2^24 - SystemCoreClock * delay/1000
 
 	/*poner el regitro VAL*/
 	SysTick->VAL = 0;
-
-	/*elegir la fuente de reloj*/
-	SysTick->CTRL |= 1u<<2;				//SYSCLK
+//
+//	/*elegir la fuente de reloj*/
+//	SysTick->CTRL |= 1u<<2;				//SYSCLK
 	/*Habilitar el conteo*/
 	SysTick->CTRL |= SysTick_CTRL_ENABLE_Msk;
 
@@ -126,8 +135,8 @@ void delay_ms(uint32_t delay){
 		while(!(SysTick->CTRL & 1U<<16));			//retardo de un milisegundo
 	}
 
-	/*deshabilitar la systick*/
-	SysTick->CTRL &=~ SysTick_CTRL_ENABLE_Msk;
+//	/*deshabilitar la systick*/
+//	SysTick->CTRL &=~ SysTick_CTRL_ENABLE_Msk;
 #endif
 	return;
 }
