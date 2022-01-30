@@ -25,7 +25,7 @@
  * 0 : solo retardos en milisegundos
  * 1 : retardos en microsegundos/milisegundos
  */
-#define USE_DELAY_US  0
+#define USE_DELAY_US  1
 
 
 /**
@@ -74,7 +74,7 @@ int main(void)
     /* Loop forever */
 	for(;;){
 		GPIOA->ODR ^= 1U<<5;
-		delay_ms(50);
+		delay_us(50);
 	}
 }
 
