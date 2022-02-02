@@ -35,25 +35,20 @@
 
 /* Private function prototypes -----------------------------------------------*/
 
-static void USART2_ConfigIT(void){
-	/*configura la interrupcion para la recepcion*/
-	USART2->CR1 |= USART_CR1_RXNEIE;			//generar IT cada vez que hay un dato para leerse
-	//NVIC
-	NVIC_SetPriority(USART2_IRQn,2);			//prioridad 2
-	NVIC_EnableIRQ(USART2_IRQn);				//habilita la IT para el USART2
-	return;
-}
+
 /* Private user code ---------------------------------------------------------*/
 uint8_t txBuffer[200];
 uint32_t len;
 uint8_t rxBuffer[100];
-
+USART_Handle_t usart2_handle;
 /* External variables --------------------------------------------------------*/
 
 
 int main(void)
 {
 	/*USART2 INIT*/
+	usart2_handle.pUSARTx = USART2;
+
 	USART_Init(USART2, 115200);
 	printf("Configuracion correcta del USART2\r\n");
 	/*LED INIT*/
@@ -61,24 +56,37 @@ int main(void)
 
 	USART_SendData(USART2, txBuffer, len);
 
-	USART_ReceiveData(USART2, rxBuffer, 10);
-	len = sprintf((char*)txBuffer,"BYTES RECIBIDOS->%s\r\n",rxBuffer);
-	USART_SendData(USART2, txBuffer, len);
+//	USART_ReceiveData(USART2, rxBuffer, 10);
+//	len = sprintf((char*)txBuffer,"BYTES RECIBIDOS->%s\r\n",rxBuffer);
+//	USART_SendData(USART2, txBuffer, len);
 
+	/*HABILITAR LA INTERRUPCION*/
+	USART_IRQInterruptConfig(USART2_IRQn, ENABLE);
+	USART_IRQPriorityConfig(USART2_IRQn, 1);
 
-	GPIO_CLOCK_ENABLE(A)
-	GPIOX_MODER(MODE_OUT,LED);
-	GPIOX_PUPDR(MODE_PU_NONE,LED);
-	GPIOX_OSPEEDR(MODE_SPD_VHIGH,LED);
-	/*BUTTON INIT*/
-	RCC->AHB1ENR |= GPIOX_CLOCK(BUTTON);
-	GPIOX_MODER(MODE_DIGITAL_INPUT,BUTTON);
-	GPIOX_PUPDR(MODE_PU_NONE,BUTTON);
+	len = sprintf((char*)txBuffer,"Usart_SendSataIT correcto\r\n");
+
+	USART_SendDataIT(&usart2_handle, txBuffer, len);
+
+	USART_ReceiveDataIT(&usart2_handle, rxBuffer, 10);
     /* Loop forever */
 	for(;;){
 
 
 
+	}
+}
+
+
+/*interrupt callback*/
+void USART_ApplicationEventCallback(USART_Handle_t *pUSARTHandle,uint8_t ApEv){
+	/*transmision completa*/
+	if(USART_EVENT_TX_CMPLT == ApEv){
+		printf("ENVIO COMPLETO IT\r\n");
+	}
+	/*recepcion completa*/
+	if(ApEv == USART_EVENT_RX_CMPLT){
+		printf("Se recibio por IT->%s\r\n",rxBuffer);
 	}
 }
 /******************************************************************************/
