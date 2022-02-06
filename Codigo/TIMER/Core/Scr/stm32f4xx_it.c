@@ -20,7 +20,7 @@
 /* Includes ------------------------------------------------------------------*/
 #include "stm32f4xx_it.h"
 /* Private includes ----------------------------------------------------------*/
-
+#include "USART.h"
 
 /* Private typedef -----------------------------------------------------------*/
 
@@ -40,7 +40,7 @@
 
 /* External variables --------------------------------------------------------*/
 
-
+extern USART_Handle_t handle_usart2;
 
 /******************************************************************************/
 /*           Cortex-M4 Processor Interruption and Exception Handlers          */
@@ -138,6 +138,9 @@ void SysTick_Handler(void)
 /* For the available peripheral interrupt handler names,                      */
 /* please refer to the startup file (startup_stm32f4xx.s).                    */
 /******************************************************************************/
-
+void USART2_IRQHandler(void)
+{
+	USART_IRQHandling(&handle_usart2);
+}
 
 
