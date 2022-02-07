@@ -26,6 +26,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "Servo.h"
 
 /* Private typedef -----------------------------------------------------------*/
 
@@ -47,14 +48,14 @@ uint8_t byte;
 uint8_t i;
 
 uint8_t duty;
+
+Servo_Handle_t servo1;
+Servo_Handle_t servo2;
 /* Private function prototypes -----------------------------------------------*/
 
 
 /* Private user code ---------------------------------------------------------*/
-/**
- * @brief configura el timer 2 canal 3 como comparacion de salida
- */
-static void TIMER2_CH3_OC_Config(void);
+
 
 /* External variables --------------------------------------------------------*/
 
@@ -73,56 +74,49 @@ int main(void)
 	handle_usart2.pUSARTx = USART2;
 	USART_IRQInterruptConfig(USART2_IRQn, ENABLE);
 	USART_ReceiveDataIT(&handle_usart2, &byte, 1);
-	/*CONFIGURAR EL TIMER 2	 */
-	TIMER2_CH3_OC_Config();
-	TIM2->CCR3 = DUTY(20);
+	/*CONFIGURAR EL SERVO*/
+	servo1.pGPIO = GPIOA;
+	servo1.Servo_Pin = 7;
+	servo1.pTIM = TIM3;			//timer usado para manipular el servo
+	servo1.TIM_CH = 2;				//canal usado
+	servo1.TIM_PSC = 16000000;		//frecuencia de reloj del timer
+	servo1.MinPulse = 0.6;			//0.6ms  pulso minimo
+	servo1.MaxPulse = 2.3;			//2.3ms pulso maximo
+
+	servo2.pGPIO = GPIOB;
+	servo2.Servo_Pin = 0;
+	servo2.pTIM = TIM3;			//timer usado para manipular el servo
+	servo2.TIM_CH = 3;				//canal usado
+	servo2.TIM_PSC = 16000000;		//frecuencia de reloj del timer
+	servo2.MinPulse = 1;			//0.6ms  pulso minimo
+	servo2.MaxPulse = 2;			//2.3ms pulso maximo
+	SERVO_Init(&servo1);
+	SERVO_Init(&servo2);
+//	SERVO_Write(&servo1, 90);
+//	delay_ms(500);
+//	SERVO_WriteMicroSeconds(&servo1, 1800);
 	/*LED INIT*/
 
     /* Loop forever */
 	for(;;){
-
-
+		SERVO_Write(&servo1, 0);
+		SERVO_Write(&servo2, 180);
+		delay_ms(2000);
+		SERVO_Write(&servo2, 135);
+		SERVO_Write(&servo1, 45);
+		delay_ms(2000);
+		SERVO_Write(&servo2, 90);
+		SERVO_Write(&servo1, 90);
+		delay_ms(2000);
+		SERVO_Write(&servo2, 15);
+		SERVO_Write(&servo1, 135);
+		delay_ms(2000);
+		SERVO_Write(&servo2, 0);
+		SERVO_Write(&servo1, 180);
+		delay_ms(2000);
 	}
 }
 
-
-
-/**
- * @brief configura el timer 2 canal 3 como comparacion de salida
- */
-static void TIMER2_CH3_OC_Config(void){
-	/*configurar el canal*/
-	//PB10-> TIM2_CH3
-	RCC->AHB1ENR |= RCC_AHB1ENR_GPIOBEN;
-	GPIOB->MODER &=~(GPIO_MODER_MODE10);
-	GPIOB->MODER |= GPIO_MODER_MODE10_1;		//FUNCION ALTERNATIVA
-	GPIOB->OSPEEDR |= GPIO_OSPEEDR_OSPEED10;	//VERY HIGH SPEED
-	GPIOB->PUPDR &=~ (GPIO_PUPDR_PUPD10);		//NO PULL UP/DOWN
-	GPIOB->AFR[1] &=~ GPIO_AFRH_AFSEL10;		//CLEAR
-	GPIOB->AFR[1] |= (1U)<<(10-8)*4;
-	/*1. Configura el PSC, ARR para determinar la FREQ del PWM*/
-	RCC->APB1ENR |= RCC_APB1ENR_TIM2EN;
-	/**
-	 * Fpwm = Ftim/(ARR + 1)(PSC + 1)
-	 * ARR = Ftim /(PSC +1)Fpwm - 1
-	 * ARR = 16MHZ/(15 + 1)1000 - 1
-	 * ARR = 1000 - 1
-	 */
-	TIM2->PSC = 16 - 1;
-	TIM2->ARR = 1000 - 1;
-	/*Configurar el timer*/
-	TIM2->CR1 = 0;
-	/*Configurar el registro CCMR2	*/
-	TIM2->CCMR2 &=~(TIM_CCMR2_CC3S); 			//configura el canal como salida
-	TIM2->CCMR2 &=~(TIM_CCMR2_OC3M);
-	TIM2->CCMR2 |= 6U<<4;						//PMW MODO 1
-	TIM2->CCER &=~ (TIM_CCER_CC3P);
-	TIM2->CCER |= TIM_CCER_CC3E;				//HABILITAR LA SALIDA DE COMPARACION
-	/*habilitar el conteo del timer*/
-	TIM2->CCR3 = 0;
-	TIM2->CR1 |= TIM_CR1_CEN;					//HABILITA EL CONTEO
-
-}
 
 /*****************************************************************************/
 void USART_ApplicationEventCallback(USART_Handle_t *pUSARTHandle,uint8_t event)
@@ -143,24 +137,6 @@ void USART_ApplicationEventCallback(USART_Handle_t *pUSARTHandle,uint8_t event)
 	}
 
 }
-//void USART2_IRQHandler(void)
-//{
-//	if(USART2->SR & USART_SR_RXNE){
-//		byte = USART2->DR;
-//		if(byte == 'X'){
-//			rxBuffer[i] = '\n';
-//			duty = atoi((char*)rxBuffer);		//string -> integer
-//			memset(rxBuffer,0,i);				//limpia el buffer
-//			i = 0;
-//			TIM2->CCR3 = DUTY(duty);
-//
-//		}else{
-//			rxBuffer[i] = byte;
-//			i++;
-//		}
-//	}
-//
-//}
 
 /******************************************************************************/
 int __io_putchar(int ch){

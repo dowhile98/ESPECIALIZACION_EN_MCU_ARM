@@ -38,6 +38,10 @@
 
 
 #define DUTY(x)			(uint16_t)((((float)x/100)*(TIM2->ARR + 1)) - 1)
+#define CH1_PSC			8
+#define POLARITY		1
+
+
 /* Private variables ---------------------------------------------------------*/
 
 USART_Handle_t handle_usart2;
@@ -47,6 +51,7 @@ uint8_t byte;
 uint8_t i;
 
 uint8_t duty;
+float freq;
 /* Private function prototypes -----------------------------------------------*/
 
 
@@ -55,7 +60,15 @@ uint8_t duty;
  * @brief configura el timer 2 canal 3 como comparacion de salida
  */
 static void TIMER2_CH3_OC_Config(void);
+/**
+ * @brief configura el timer 5 en modo comparacion de salida
+ */
+static void TIMER5_CH1_IC_Config(void);
 
+/**
+ * @brief calcular la frecuencia
+ */
+static float computeFreq(void);
 /* External variables --------------------------------------------------------*/
 
 
@@ -76,12 +89,14 @@ int main(void)
 	/*CONFIGURAR EL TIMER 2	 */
 	TIMER2_CH3_OC_Config();
 	TIM2->CCR3 = DUTY(20);
+	TIMER5_CH1_IC_Config();
 	/*LED INIT*/
 
     /* Loop forever */
 	for(;;){
-
-
+		freq = computeFreq();
+		printf("FRECUENCIA->%.2f Hz\r\n",freq);
+		delay_ms(500);
 	}
 }
 
@@ -108,8 +123,8 @@ static void TIMER2_CH3_OC_Config(void){
 	 * ARR = 16MHZ/(15 + 1)1000 - 1
 	 * ARR = 1000 - 1
 	 */
-	TIM2->PSC = 16 - 1;
-	TIM2->ARR = 1000 - 1;
+	TIM2->PSC = 0;
+	TIM2->ARR = 400-1;
 	/*Configurar el timer*/
 	TIM2->CR1 = 0;
 	/*Configurar el registro CCMR2	*/
@@ -123,6 +138,78 @@ static void TIMER2_CH3_OC_Config(void){
 	TIM2->CR1 |= TIM_CR1_CEN;					//HABILITA EL CONTEO
 
 }
+
+/**
+ * @brief configura el timer 5 en modo comparacion de salida
+ */
+static void TIMER5_CH1_IC_Config(void){
+	/*configurar el pin*/
+	RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN;
+	//PA0
+	GPIOA->MODER &=~ GPIO_MODER_MODER0;
+	GPIOA->MODER |= GPIO_MODER_MODE0_1;
+	GPIOA->AFR[0] &=~ GPIO_AFRL_AFSEL0;
+	GPIOA->AFR[0] |= 2U;
+	GPIOA->OSPEEDR |= GPIO_OSPEEDR_OSPEED0;
+	GPIOA->PUPDR &=~ GPIO_PUPDR_PUPD0;
+	/*CONFIGURAR EL TIMER*/
+	RCC->APB1ENR |= RCC_APB1ENR_TIM5EN;
+	/*
+	 * periodo maximo
+	 * Tmax = (ARR + 1)(PSC + 1)/Ftim
+	 * Frecuencia minima
+	 * Fmin = 1/Tmax
+	 * Tmax = (0xFFFFFFFF + 1)(1)/16MHZ = 268.43 seg
+	 * Fmin = 3.73E-3 Hz
+	 */
+	TIM5->CR1 = 0;
+	TIM5->PSC = 0;
+	TIM5->ARR = 0xFFFFFFFF;
+	/*Configurar el canal de entrada*/
+	TIM5->CCMR1 &=~ (TIM_CCMR1_CC1S);
+	TIM5->CCMR1 |= 0x1;							//CH1 input capture
+	TIM5->CCMR1 &=~ (TIM_CCMR1_IC1PSC);			//prescaler de 0
+	TIM5->CCMR1 |= 0x3U<<2;						//prescaler 8
+	TIM5->CCMR1 |= 0x3U<<TIM_CCMR1_IC1F_Pos;	//Fsampling = Fdts/32, N = 8
+	/*configurar el flanco a detectarse*/
+	TIM5->CCER &=~ (TIM_CCER_CC1NP | TIM_CCER_CC1P);//rising edge
+	/*habilitar el pin para la captura*/
+	TIM5->CCER |= TIM_CCER_CC1E;
+	/*habilitar el conteo del timer*/
+	TIM5->CR1 |= TIM_CR1_CEN;
+}
+
+
+
+/**
+ * @brief calcular la frecuencia
+ */
+static float computeFreq(void){
+	uint32_t IC[2];
+	float diff;
+	uint32_t TIM5_CLK = SystemCoreClock;
+	float freq;
+
+	/*se detecta el primer flanco*/
+	TIM5->SR &=~ TIM_SR_CC1IF;
+	while(!(TIM5->SR & TIM_SR_CC1IF));
+	TIM5->SR &=~ TIM_SR_CC1IF;
+	IC[0] = TIM5->CCR1;
+	/*se detecta el segundo flanco*/
+	TIM5->SR &=~ TIM_SR_CC1IF;
+	while(!(TIM5->SR & TIM_SR_CC1IF));
+	TIM5->SR &=~ TIM_SR_CC1IF;
+	IC[1] = TIM5->CCR1;
+	/*se realiza el calculo*/
+	if(IC[1]>= IC[0])
+		diff = IC[1] - IC[0];
+	else
+		diff = TIM5->ARR - IC[0] + IC[1];
+	freq = (float)((TIM5_CLK/((TIM5->PSC +1)  * POLARITY)) / diff) * CH1_PSC;
+
+	return freq;
+}
+
 
 /*****************************************************************************/
 void USART_ApplicationEventCallback(USART_Handle_t *pUSARTHandle,uint8_t event)
@@ -143,29 +230,10 @@ void USART_ApplicationEventCallback(USART_Handle_t *pUSARTHandle,uint8_t event)
 	}
 
 }
-//void USART2_IRQHandler(void)
-//{
-//	if(USART2->SR & USART_SR_RXNE){
-//		byte = USART2->DR;
-//		if(byte == 'X'){
-//			rxBuffer[i] = '\n';
-//			duty = atoi((char*)rxBuffer);		//string -> integer
-//			memset(rxBuffer,0,i);				//limpia el buffer
-//			i = 0;
-//			TIM2->CCR3 = DUTY(duty);
-//
-//		}else{
-//			rxBuffer[i] = byte;
-//			i++;
-//		}
-//	}
-//
-//}
-
 /******************************************************************************/
 int __io_putchar(int ch){
 #if (USE_SWV== 1)
-	ITM_SendChar((uint32_t)ch);
+	ITM_SendChar((uint32_t)ch);  //SW0 -> PB3
 #else
 	uint8_t c = ch & 0xFF;
 	while(!(USART2->SR & USART_SR_TXE));  //espera hasta que usart este listo para transmitir otro byte

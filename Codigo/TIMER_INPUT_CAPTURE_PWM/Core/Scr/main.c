@@ -38,6 +38,10 @@
 
 
 #define DUTY(x)			(uint16_t)((((float)x/100)*(TIM2->ARR + 1)) - 1)
+#define CH1_PSC			1
+#define POLARITY		1
+
+
 /* Private variables ---------------------------------------------------------*/
 
 USART_Handle_t handle_usart2;
@@ -47,6 +51,9 @@ uint8_t byte;
 uint8_t i;
 
 uint8_t duty;
+float freqIC;
+float dutyIC;
+
 /* Private function prototypes -----------------------------------------------*/
 
 
@@ -55,7 +62,15 @@ uint8_t duty;
  * @brief configura el timer 2 canal 3 como comparacion de salida
  */
 static void TIMER2_CH3_OC_Config(void);
+/**
+ * @brief configura el timer 5 en modo comparacion de salida
+ */
+static void TIMER5_CH1_IC_Config(void);
 
+/**
+ * @brief calcular la frecuencia
+ */
+static void computeDutyFreq(void);
 /* External variables --------------------------------------------------------*/
 
 
@@ -75,13 +90,19 @@ int main(void)
 	USART_ReceiveDataIT(&handle_usart2, &byte, 1);
 	/*CONFIGURAR EL TIMER 2	 */
 	TIMER2_CH3_OC_Config();
-	TIM2->CCR3 = DUTY(20);
+	TIM2->CCR3 = DUTY(40);
+	TIMER5_CH1_IC_Config();
 	/*LED INIT*/
 
     /* Loop forever */
 	for(;;){
-
-
+		computeDutyFreq();
+#if USE_SWV == 1
+		printf("DUTY-> %.2f    FRECUENCIA-> %.2f\r\n",dutyIC,freqIC);
+#else
+		printf("%.2f\r\n",dutyIC);			//SE ENVIA EL DUTY
+#endif
+		delay_ms(100);
 	}
 }
 
@@ -108,8 +129,8 @@ static void TIMER2_CH3_OC_Config(void){
 	 * ARR = 16MHZ/(15 + 1)1000 - 1
 	 * ARR = 1000 - 1
 	 */
-	TIM2->PSC = 16 - 1;
-	TIM2->ARR = 1000 - 1;
+	TIM2->PSC = 15;
+	TIM2->ARR = 1000-1;
 	/*Configurar el timer*/
 	TIM2->CR1 = 0;
 	/*Configurar el registro CCMR2	*/
@@ -123,6 +144,87 @@ static void TIMER2_CH3_OC_Config(void){
 	TIM2->CR1 |= TIM_CR1_CEN;					//HABILITA EL CONTEO
 
 }
+
+/**
+ * @brief configura el timer 5 en modo comparacion de salida
+ */
+static void TIMER5_CH1_IC_Config(void){
+	/*configurar el pin*/
+	RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN;
+	//PA0
+	GPIOA->MODER &=~ GPIO_MODER_MODER0;
+	GPIOA->MODER |= GPIO_MODER_MODE0_1;
+	GPIOA->AFR[0] &=~ GPIO_AFRL_AFSEL0;
+	GPIOA->AFR[0] |= 2U;
+	GPIOA->OSPEEDR |= GPIO_OSPEEDR_OSPEED0;
+	GPIOA->PUPDR &=~ GPIO_PUPDR_PUPD0;
+	/*CONFIGURAR EL TIMER*/
+	RCC->APB1ENR |= RCC_APB1ENR_TIM5EN;
+	/*
+	 * periodo maximo
+	 * Tmax = (ARR + 1)(PSC + 1)/Ftim
+	 * Frecuencia minima
+	 * Fmin = 1/Tmax
+	 * Tmax = (0xFFFFFFFF + 1)(1)/16MHZ = 268.43 seg
+	 * Fmin = 3.73E-3 Hz
+	 */
+	TIM5->CR1 = 0;
+	TIM5->PSC = 0;
+	TIM5->ARR = 0xFFFFFFFF;
+	/*Configurar el canal de entrada*/
+	TIM5->CCMR1 &=~ (TIM_CCMR1_CC1S);
+	TIM5->CCMR1 |= 0x1;					//CH1 input capture
+	TIM5->CCMR1 &=~ (TIM_CCMR1_IC1PSC);	//prescaler de 0
+//	TIM5->CCMR1 |= 0x3U<<2;
+	TIM5->CCMR1 |= 0x3U<<TIM_CCMR1_IC1F_Pos;	//Fsampling = Fdts/32, N = 8
+	/*configurar el flanco a detectarse*/
+	TIM5->CCER &=~ (TIM_CCER_CC1NP | TIM_CCER_CC1P);//rising edge
+
+	TIM5->CCMR1 &=~(TIM_CCMR1_CC2S);
+	TIM5->CCMR1 |= TIM_CCMR1_CC2S_1;           //TI1 seleccionado
+	TIM5->CCER &=~(TIM_CCER_CC2NP);
+	TIM5->CCER |= TIM_CCER_CC2P;				//falling edge
+	TIM5->SMCR &=~(TIM_SMCR_TS);
+	TIM5->SMCR |= 0x5U<<4;						//Filtered timer input 1(TI1FP1)
+	TIM5->SMCR &=~(TIM_SMCR_SMS);				//Reset
+	TIM5->SMCR |= 0x4U<<TIM_SMCR_SMS_Pos;		//reset mode
+
+	/*habilitar el pin para la captura*/
+	TIM5->CCER |= TIM_CCER_CC2E | TIM_CCER_CC1E;
+	/*habilitar el conteo del timer*/
+	TIM5->CR1 |= TIM_CR1_CEN;
+}
+
+
+
+/**
+ * @brief calcular la frecuencia
+ */
+static void computeDutyFreq(void){
+	uint32_t IC[3];
+
+	uint32_t TIM5_CLK = SystemCoreClock;
+
+	/*se detecta el primer de subida*/
+	TIM5->SR = 0;
+	while(!(TIM5->SR & TIM_SR_CC1IF));
+	TIM5->SR = 0;
+	IC[0] = TIM5->CCR1;
+	/*se detecta el flanco de bajada*/
+	while(!(TIM5->SR & TIM_SR_CC2IF));
+	TIM5->SR = 0;
+	IC[1] = TIM5->CCR2;
+	/*se detecta el segundo flanco de subida*/
+	while(!(TIM5->SR & TIM_SR_CC1IF));
+	TIM5->SR = 0;
+	IC[2] = TIM5->CCR1;
+	/*se realiza el calculo*/
+
+	freqIC = (float)((TIM5_CLK/((TIM5->PSC +1)  * POLARITY)) / IC[2]) * CH1_PSC;
+	/*se calcula el duty*/
+	dutyIC = ((float)IC[1]/IC[2])*100;
+}
+
 
 /*****************************************************************************/
 void USART_ApplicationEventCallback(USART_Handle_t *pUSARTHandle,uint8_t event)
@@ -143,8 +245,6 @@ void USART_ApplicationEventCallback(USART_Handle_t *pUSARTHandle,uint8_t event)
 	}
 
 }
-
-
 /******************************************************************************/
 int __io_putchar(int ch){
 #if (USE_SWV== 1)

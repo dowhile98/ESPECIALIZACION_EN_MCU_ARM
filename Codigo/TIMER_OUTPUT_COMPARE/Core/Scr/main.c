@@ -15,7 +15,13 @@
  *
  ******************************************************************************
  */
-
+/**
+ * Se desea generar señales de salida con el timer3
+ * CH1 = 500HZ
+ * CH2 = 1KHZ
+ * CH3 = 4KHZ
+ * CH4 = 16KHZ
+ */
 #include <stdint.h>
 #include "stm32f4xx.h"
 /* Private includes ----------------------------------------------------------*/
@@ -37,7 +43,13 @@
 #define USE_SWV			0
 
 
-#define DUTY(x)			(uint16_t)((((float)x/100)*(TIM2->ARR + 1)) - 1)
+#define TIM3_CH1		B , 4
+#define TIM3_CH2		A , 7
+#define TIM3_CH3		B , 0
+#define TIM3_CH4		B , 1
+
+
+#define GET_PULSE(freq)	(16000000/(2*freq*(0 + 1)))
 /* Private variables ---------------------------------------------------------*/
 
 USART_Handle_t handle_usart2;
@@ -46,7 +58,10 @@ uint8_t rxBuffer[20];
 uint8_t byte;
 uint8_t i;
 
-uint8_t duty;
+uint16_t pulse1 = GET_PULSE(500);
+uint16_t pulse2 = GET_PULSE(1000);
+uint16_t pulse3 = GET_PULSE(4000);
+uint16_t pulse4 = GET_PULSE(16000);
 /* Private function prototypes -----------------------------------------------*/
 
 
@@ -54,7 +69,7 @@ uint8_t duty;
 /**
  * @brief configura el timer 2 canal 3 como comparacion de salida
  */
-static void TIMER2_CH3_OC_Config(void);
+static void TIMER3_OC_Config(void);
 
 /* External variables --------------------------------------------------------*/
 
@@ -73,9 +88,8 @@ int main(void)
 	handle_usart2.pUSARTx = USART2;
 	USART_IRQInterruptConfig(USART2_IRQn, ENABLE);
 	USART_ReceiveDataIT(&handle_usart2, &byte, 1);
-	/*CONFIGURAR EL TIMER 2	 */
-	TIMER2_CH3_OC_Config();
-	TIM2->CCR3 = DUTY(20);
+	/*CONFIGURAR EL TIMER 3	 */
+	TIMER3_OC_Config();
 	/*LED INIT*/
 
     /* Loop forever */
@@ -90,59 +104,48 @@ int main(void)
 /**
  * @brief configura el timer 2 canal 3 como comparacion de salida
  */
-static void TIMER2_CH3_OC_Config(void){
-	/*configurar el canal*/
-	//PB10-> TIM2_CH3
-	RCC->AHB1ENR |= RCC_AHB1ENR_GPIOBEN;
-	GPIOB->MODER &=~(GPIO_MODER_MODE10);
-	GPIOB->MODER |= GPIO_MODER_MODE10_1;		//FUNCION ALTERNATIVA
-	GPIOB->OSPEEDR |= GPIO_OSPEEDR_OSPEED10;	//VERY HIGH SPEED
-	GPIOB->PUPDR &=~ (GPIO_PUPDR_PUPD10);		//NO PULL UP/DOWN
-	GPIOB->AFR[1] &=~ GPIO_AFRH_AFSEL10;		//CLEAR
-	GPIOB->AFR[1] |= (1U)<<(10-8)*4;
+static void TIMER3_OC_Config(void){
+	/*configuracion de canales*/
+	RCC->AHB1ENR |= GPIOX_CLOCK(TIM3_CH1) | GPIOX_CLOCK(TIM3_CH2) | GPIOX_CLOCK(TIM3_CH3) | GPIOX_CLOCK(TIM3_CH4);
+	GPIOX_MODER(MODE_ALTER,TIM3_CH1);
+	GPIOX_MODER(MODE_ALTER,TIM3_CH2);
+	GPIOX_MODER(MODE_ALTER,TIM3_CH3);
+	GPIOX_MODER(MODE_ALTER,TIM3_CH4);
+	GPIOX_AFR(2,TIM3_CH1);
+	GPIOX_AFR(2,TIM3_CH2);
+	GPIOX_AFR(2,TIM3_CH3);
+	GPIOX_AFR(2,TIM3_CH4);
 	/*1. Configura el PSC, ARR para determinar la FREQ del PWM*/
-	RCC->APB1ENR |= RCC_APB1ENR_TIM2EN;
-	/**
-	 * Fpwm = Ftim/(ARR + 1)(PSC + 1)
-	 * ARR = Ftim /(PSC +1)Fpwm - 1
-	 * ARR = 16MHZ/(15 + 1)1000 - 1
-	 * ARR = 1000 - 1
-	 */
-	TIM2->PSC = 16 - 1;
-	TIM2->ARR = 1000 - 1;
+	RCC->APB1ENR |= RCC_APB1ENR_TIM3EN;
+	TIM3->PSC = 0;
+	TIM3->ARR = 0xFFFF;
 	/*Configurar el timer*/
-	TIM2->CR1 = 0;
+	TIM3->CR1 = 0;
 	/*Configurar el registro CCMR2	*/
-	TIM2->CCMR2 &=~(TIM_CCMR2_CC3S); 			//configura el canal como salida
-	TIM2->CCMR2 &=~(TIM_CCMR2_OC3M);
-	TIM2->CCMR2 |= 6U<<4;						//PMW MODO 1
-	TIM2->CCER &=~ (TIM_CCER_CC3P);
-	TIM2->CCER |= TIM_CCER_CC3E;				//HABILITAR LA SALIDA DE COMPARACION
+	TIM3->CCMR1 &=~(TIM_CCMR1_CC1S | TIM_CCMR1_CC2S); 	//configura el canal como salida
+	TIM3->CCMR1 &=~(TIM_CCMR1_OC1M | TIM_CCMR1_OC2M);
+	TIM3->CCMR2 &=~(TIM_CCMR2_CC3S | TIM_CCMR2_CC4S); 	//configura el canal como salida
+	TIM3->CCMR2 &=~(TIM_CCMR2_OC3M | TIM_CCMR2_OC4M);
+	TIM3->CCMR1 |= 3U<<12 | 3U<<4;						//TOOGLE
+	TIM3->CCMR2 |= 3U<<12 | 3U<<4;						//TOOGLE
+	TIM3->CCER &=~ (TIM_CCER_CC4P | TIM_CCER_CC3P | TIM_CCER_CC2P | TIM_CCER_CC1P);
+	TIM3->CCER |= TIM_CCER_CC4E | TIM_CCER_CC3E | TIM_CCER_CC2E | TIM_CCER_CC1E;				//HABILITAR LA SALIDA DE COMPARACION
 	/*habilitar el conteo del timer*/
-	TIM2->CCR3 = 0;
-	TIM2->CR1 |= TIM_CR1_CEN;					//HABILITA EL CONTEO
+	TIM3->CCR1 = pulse1;
+	TIM3->CCR2 = pulse2;
+	TIM3->CCR3 = pulse3;
+	TIM3->CCR4 = pulse4;
+	/*configurar la interrupcion*/
+	TIM3->DIER |= TIM_DIER_CC4IE | TIM_DIER_CC3IE | TIM_DIER_CC2IE | TIM_DIER_CC1IE;
+	NVIC_EnableIRQ(TIM3_IRQn);
+	NVIC_SetPriority(TIM3_IRQn,2);
+	/*SE HABILITA EL CONTEO*/
+	TIM3->CR1 |= TIM_CR1_CEN;					//HABILITA EL CONTEO
 
 }
 
 /*****************************************************************************/
-void USART_ApplicationEventCallback(USART_Handle_t *pUSARTHandle,uint8_t event)
-{
-	if(event == USART_EVENT_RX_CMPLT){
-		if(byte != 'X'){
-				rxBuffer[i] = byte;
-				i++;
-		}else{
-			rxBuffer[i] = '\n';
-			duty = atoi((char*)rxBuffer);		//string -> integer
-			memset(rxBuffer,0,i);				//limpia el buffer
-			i = 0;
-			TIM2->CCR3 = DUTY(duty);
-		}
 
-		USART_ReceiveDataIT(&handle_usart2, &byte, 1);
-	}
-
-}
 
 
 /******************************************************************************/
