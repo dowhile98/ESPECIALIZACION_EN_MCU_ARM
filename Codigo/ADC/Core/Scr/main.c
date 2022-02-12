@@ -23,12 +23,27 @@
 #include "Config.h"
 #include "Delay.h"
 #include "USART.h"
+#include <stdio.h>
 /* Private typedef -----------------------------------------------------------*/
 
 
 /* Private define ------------------------------------------------------------*/
-
-
+#define ADC_CH0			0
+#define ADC_CH1			1
+#define ADC_CH2			2
+#define ADC_CH3			3
+#define ADC_CH4			4
+#define ADC_CH5			5
+#define ADC_CH6			6
+#define ADC_CH7			7
+#define ADC_CH8			8
+#define ADC_CH9			9
+#define ADC_CH10		10
+#define ADC_CH11		11
+#define ADC_CH12		12
+#define ADC_CH13		13
+#define ADC_CH14		14
+#define ADC_CH15		15
 /* Private macro -------------------------------------------------------------*/
 /**
  * USE_SWV = 1 : el printf se usa para el la depuracion
@@ -38,11 +53,24 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* Private function prototypes -----------------------------------------------*/
+/**
+ * @brief configuracion del ADC1
+ */
+void ADC1_InitSingleMode(void);
+/**
+ * @brief configuracion de canales
+ */
+void ADC1_ChanelConfiguration(void);
+/**
+ * @brief lectura de un canal analogico
+ */
+uint16_t ADC1_ChannelRead(uint8_t chx);
 
 
 /* Private user code ---------------------------------------------------------*/
 
-
+uint16_t data;
+float volt;
 /* External variables --------------------------------------------------------*/
 
 
@@ -57,18 +85,72 @@ int main(void)
 	/*USART2 init*/
 	USART_Init(USART2, 115200);
 	/*ADC1 Configuratarion*/
-
-
+	ADC1_InitSingleMode();
+	ADC1_ChanelConfiguration();
     /* Loop forever */
 	for(;;){
 
-
-
+		data = ADC1_ChannelRead(ADC_CH0);
+		volt = data * 3.3/4096;
+		printf("ADC_CH0->%u   VOLTAJE->%.2f\r\n",data,volt);
+		delay_ms(200);
 	}
 }
 /******************************************************************************/
 
+/**
+ * @brief configuracion del ADC1
+ */
+void ADC1_InitSingleMode(void){
+	/*habilitar el reloj*/
+	RCC->APB2ENR |= RCC_APB2ENR_ADC1EN;
+	/*configurar el ADC*/
+	ADC1_COMMON->CCR &=~ADC_CCR_ADCPRE;		//PCLK2 / 2 = 8MHZ
+	ADC1->CR1 = 0;
+	ADC1->CR2 = 0;
 
+	/*encender el ADC*/
+	ADC1->CR2 |= ADC_CR2_ADON;
+	return;
+}
+/**
+ * @brief configuracion de canales
+ */
+void ADC1_ChanelConfiguration(void){
+	/*PA0->CH0, PA1->CH1, PA4->CH4, PB0->CH8, PC1->CH11, PC0->CH10*/
+	RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN | RCC_AHB1ENR_GPIOBEN | RCC_AHB1ENR_GPIOCEN;
+	//PA0, PA1 y PA4
+	GPIOA->MODER |= GPIO_MODER_MODER0 | GPIO_MODER_MODER1 | GPIO_MODER_MODER4;
+	GPIOA->PUPDR &=~(GPIO_PUPDR_PUPD0 | GPIO_PUPDR_PUPD1 | GPIO_PUPDR_PUPD4);
+	//PB0
+	GPIOB->MODER |= GPIO_MODER_MODE0;
+	GPIOB->PUPDR &=~(GPIO_PUPDR_PUPD0);
+	//PC0, PC1
+	GPIOC->MODER |= GPIO_MODER_MODE0 | GPIO_MODER_MODE1;
+	GPIOC->PUPDR &=~(GPIO_PUPDR_PUPD0 | GPIO_PUPDR_PUPD1);
+	/*SAMPLING TIME*/
+	ADC1->SMPR2 |= ADC_SMPR2_SMP1_0;						//15 Cycles
+	ADC1->SMPR1 |= ADC_SMPR1_SMP11_1 | ADC_SMPR1_SMP11_0;	//56 Cycles
+
+	return;
+}
+
+
+/**
+ * @brief lectura de un canal analogico
+ */
+uint16_t ADC1_ChannelRead(uint8_t chx){
+	/*configurar el SQR1 y SQR3*/
+	ADC1->SQR1 = 0;				//Una sola conversion
+	ADC1->SQR3 = chx;			//se le asigna el numero de canal
+	/*modo single*/
+	ADC1->CR2 |= ADC_CR2_SWSTART;
+	//esperar que se termine la conversion*/
+	while(!(ADC1->SR & ADC_SR_EOC));
+
+	//se retorna el valor ADC
+	return ADC1->DR;
+}
 
 /******************************************************************************/
 int __io_putchar(int ch){
