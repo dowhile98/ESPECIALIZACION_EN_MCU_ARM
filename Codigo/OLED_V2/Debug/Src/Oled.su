@@ -1,0 +1,10 @@
+Oled.c:22:6:Write_IIC_Command	24	static
+Oled.c:33:6:Write_IIC_Data	24	static
+Oled.c:117:6:OLED_WR_Byte	16	static
+Oled.c:138:6:OLED_Set_Pos	16	static
+Oled.c:152:6:OLED_Display_On	8	static
+Oled.c:166:6:OLED_Display_Off	8	static
+Oled.c:184:6:OLED_Set_Pixel	16	static
+Oled.c:203:6:OLED_Display	16	static
+Oled.c:226:6:OLED_Clear	16	static
+Oled.c:249:6:OLED_Init	8	static

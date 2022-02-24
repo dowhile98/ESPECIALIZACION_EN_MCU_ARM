@@ -21,6 +21,9 @@
 /* Private includes ----------------------------------------------------------*/
 #include "RCC.h"
 #include "Config.h"
+#include "Delay.h"
+#include "MPU6050.h"
+#include <stdio.h>
 /* Private typedef -----------------------------------------------------------*/
 
 
@@ -28,13 +31,18 @@
 
 
 /* Private macro -------------------------------------------------------------*/
-#define USE_SWV			0
+#define USE_SWV			1
 
 #define I2C1_SCL		B, 8
 #define I2C1_SDA		B, 9
 #define PCLK1			16E+6
 #define SLAVE_ADDR  	0x60
+
+
+#define MPU_ADDRESS		0x68
 /* Private variables ---------------------------------------------------------*/
+uint8_t some_data[] = "We are testing I2C master Tx\n";
+ScaledData_Def aSc, gySc;
 
 /* Private function prototypes -----------------------------------------------*/
 
@@ -48,20 +56,48 @@ void I2C1_GPIOInit(void);
 /**
  * @brief configura el i2c
  */
-void I2C1_Init(I2C_TypeDef *I2Cx);
+void I2C_Init(I2C_TypeDef *I2Cx);
+
+/**
+ * @brief transmision de datos del maestro
+ */
+void I2C_MasterSendData(I2C_TypeDef *I2Cx, uint8_t SlaveAddr,uint8_t *pTxbuffer, uint32_t Len);
+
+/**
+ * @brief recibir datos de un esclavo
+ */
+void I2C_MasterReceiveData(I2C_TypeDef *I2Cx,uint8_t SlaveAddr,uint8_t *pRxbuffer, uint32_t Len);
+/**
+  * @brief configura el MPU6050
+	*/
+void MPU6050_Init_Config(void);
 /* External variables --------------------------------------------------------*/
 
 
 int main(void)
 {
-
-	/*LED INIT*/
-
+	/*delay Init*/
+#if USE_DELAY_US == 1
+	delay_Init(SystemCoreClock/1000000);
+#else
+	delay_Init(SystemCoreClock/1000);
+#endif
+/*******************************************************************************/
+	I2C1_GPIOInit();
+	I2C_Init(I2C1);
+	//I2C_MasterSendData(I2C1, MPU_ADDRESS, some_data, 10);
+	//Configurar el mpu6050
+	MPU6050_Init_Config();
     /* Loop forever */
 	for(;;){
 
-
-
+		MPU6050_Get_Accel_Scale(&aSc);
+		MPU6050_Get_Gyro_Scale(&gySc);
+		printf("ACELEROMETRO\r\n");
+		printf("x->%.2f, y->%.2f, z->%.2f\r\n",aSc.x,aSc.y,aSc.z);
+		printf("GIROSCOPIO\r\n");
+		printf("x->%.2f, y->%.2f, z->%.2f\r\n",gySc.x,gySc.y,gySc.z);
+		delay_ms(200);
 	}
 }
 
@@ -88,7 +124,7 @@ void I2C1_GPIOInit(void){
 /**
  * @brief configura el i2c
  */
-void I2C1_Init(I2C_TypeDef *I2Cx){
+void I2C_Init(I2C_TypeDef *I2Cx){
 	uint32_t tempreg = 0;
 	uint16_t ccr_value = 0;
 	/*habilitar el reloj*/
@@ -126,8 +162,114 @@ void I2C1_Init(I2C_TypeDef *I2Cx){
 	tempreg = (PCLK1 / 1000000U) + 1;
 	//tempreg = ( (PCLK1 * 300) / 1000000000U ) + 1; //FAST MODE
 	I2Cx->TRISE = (tempreg & 0x3F);
+	//habilitar el modulo i2c
+	I2Cx->CR1 |= I2C_CR1_PE;
+	return;
+}
+
+/**
+ * @brief transmision de datos del maestro
+ */
+void I2C_MasterSendData(I2C_TypeDef *I2Cx, uint8_t SlaveAddr,uint8_t *pTxbuffer, uint32_t Len){
+	volatile int tmp;
+	/*verificar los datos*/
+	if(Len <= 0 || pTxbuffer == ((void *)0))
+		return;
+	/*esperar que la linea este libre*/
+	while((I2Cx->SR2 & I2C_SR2_BUSY));
+	//1.generar la condición de start
+	I2Cx->CR1 |= I2C_CR1_START;
+	//2. esperar que la condicion de start se haya generado
+	while(!(I2Cx->SR1 & I2C_SR1_SB));
+	//3. enviar la direccion del esclavo
+	SlaveAddr = SlaveAddr <<1 ;				//A7-A1 (R/W)
+	SlaveAddr &=~(1U);						//write operation
+	I2Cx->DR = SlaveAddr;
+	//4. Verificamos que la fase de direccion se complete
+	while(!(I2Cx->SR1 & I2C_SR1_ADDR));
+	//5. limpiar el flag
+	tmp = I2Cx->SR1;
+	tmp = I2Cx->SR2;
+	(void)tmp;
+	//6. enviar los datos
+	while(Len > 0){
+
+		while(!(I2Cx->SR1 & I2C_SR1_TXE));
+		I2Cx->DR = *pTxbuffer;
+		pTxbuffer++;
+		Len--;
+	}
+	//7. esperar hasta que la transmision se haya completado
+	while(!(I2Cx->SR1 & I2C_SR1_TXE));
+	while(!(I2Cx->SR1 & I2C_SR1_BTF));
+
+	//8. generar la condición de stop
+	I2Cx->CR1 |= I2C_CR1_STOP;
+	return;
+}
+
+void I2C_MasterReceiveData(I2C_TypeDef *I2Cx,uint8_t SlaveAddr,uint8_t *pRxbuffer, uint32_t Len){
+	volatile int tmp;
+
+	/*verificar los datos*/
+	if(Len <= 0 || pRxbuffer == ((void *)0))
+		return;
+	/*esperar que la linea estÃ© libre*/
+	while((I2Cx->SR2 & I2C_SR2_BUSY));
+
+	//1. generar la condiciÃ³n de start
+	I2Cx->CR1 |= I2C_CR1_START;
+	//2. esperar que la condiciÃ³n de inicio se haya generado
+	while(!(I2Cx->SR1 & I2C_SR1_SB));
+
+	//3. enviar la direccion del esclavo
+	SlaveAddr = SlaveAddr << 1;
+	SlaveAddr |= 1U;			//read operation
+	I2Cx->DR = SlaveAddr;
+
+	//4. verificar que la fase de direccion se completÃ³
+	while(!(I2Cx->SR1 & I2C_SR1_ADDR));
+
+	//5. limpiar el flag
+	tmp = I2Cx->SR1;
+	tmp = I2Cx->SR2;
+	(void)tmp;
+	/* Enable Acknowledge */
+	I2Cx->CR1 |=  I2C_CR1_ACK;
+	while(Len>0U){
+		if(Len == 1){
+			/* Disable Acknowledge */
+			I2Cx->CR1 &=~ I2C_CR1_ACK;
+			//esperar hasta que RXNE se establesca
+			while(!(I2Cx->SR1 & I2C_SR1_RXNE));
+			//genera una condicion de parada
+			I2Cx->CR1 |= I2C_CR1_STOP;
+			//leer el dato
+			*pRxbuffer = I2Cx->DR;
+			Len--;
+		}else{
+			//esperar hasta que RXNE se establesca
+			while(!(I2Cx->SR1 & I2C_SR1_RXNE));
+			*pRxbuffer = I2Cx->DR;
+			pRxbuffer++;
+			Len--;
+		}
+	}
 
 	return;
+}
+
+void MPU6050_Init_Config(void){
+	MPU_ConfigTypeDef MPU_init = {0};
+	MPU_init.ClockSource = Internal_8MHz;
+	MPU_init.Gyro_Full_Scale = AFS_SEL_2g;
+	MPU_init.CONFIG_DLPF = DLPF_184A_188G_Hz;
+	MPU_init.Gyro_Full_Scale =  FS_SEL_500;
+	MPU_init.Sleep_Mode_Bit = 0;
+
+	MPU6050_Init(I2C1);
+	//se inicializan los parametros del MPU
+	MPU6050_Config(&MPU_init);
 }
 /******************************************************************************/
 int __io_putchar(int ch){

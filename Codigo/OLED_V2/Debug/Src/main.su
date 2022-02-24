@@ -1,0 +1,8 @@
+main.c:75:5:main	16	static
+main.c:109:6:PLL_Config	8	static
+main.c:143:6:HSE_Config	8	static
+main.c:151:6:flash_cofig	8	static
+main.c:165:6:I2C1_GPIOInit	4	static
+main.c:185:6:I2C_Init	24	static
+main.c:250:6:I2C_MasterSendData	32	static
+main.c:294:6:I2C_MasterReceiveData	32	static
