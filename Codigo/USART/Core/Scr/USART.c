@@ -82,7 +82,8 @@ void USART_Init(USART_TypeDef * USARTx,uint32_t baud){
 void USART_SendData(USART_TypeDef * USARTx,uint8_t *pTxBuffer, uint32_t Size){
 	uint16_t *pdata;
 
-	for(uint32_t i = 0;i<Size;i++){
+	
+	{
 		//verificar el flag TXE
 		while(!(USARTx->SR & USART_SR_TXE));
 
