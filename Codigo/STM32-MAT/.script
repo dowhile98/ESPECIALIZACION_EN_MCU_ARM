@@ -1,0 +1,3 @@
+config load "D:\TRABAJO\UMAKER\CURSOS\ARM - NUCLEO\ESPECIALIZACION_EN_MCU_ARM\Codigo\STM32-MAT\STM32-MAT.ioc"
+project generate ui
+exit wait
